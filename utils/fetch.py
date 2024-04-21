@@ -1,20 +1,17 @@
 from pathlib import Path
 from warnings import warn
+from typing import List, Dict, Any
 
 import utils.find as find
 import utils.constants as cst
 import utils.pipeline as pl
 
-# * ===================================================================================================
 
 def fetch_run_data(
-    run_path: Path, 
-    *,
-    specdir: str = None,
-    probe: str = None,
-    **kwargs
-) -> list:
+    run_path: str, specdir: str = None, probe: str = None, **kwargs
+) -> List:
     
+    run_path = Path(run_path)
     run_id = run_path.name
     file_extension = '.dat'
     pp_dirs = []

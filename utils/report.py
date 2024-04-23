@@ -6,7 +6,7 @@ from utils.fetch import fetch_postprocessing_dirs
 from typing import Any
 
 
-def get_line(run_path, start_line) -> Any:
+def get_line(run_path: Path, start_line: str) -> Any:
     with open(run_path / 'log.simpleFoam', 'r') as f:
         for line in f:
             if line.startswith(start_line):
@@ -14,7 +14,7 @@ def get_line(run_path, start_line) -> Any:
     return None
 
 
-def get_last_line(run_path, file_name) -> Any:
+def get_last_line(run_path: Path, file_name: str) -> Any:
     log_file = [
         log for log in fetch_postprocessing_dirs(run_path)['logs']
         if file_name in log.name
@@ -30,7 +30,7 @@ get_n_cpu = partial(get_line, start_line='nProcs')
 
 
 
-def report(run_path):
+def report(run_path: Path):
     df = pd.DataFrame(
         {       
             'Project': [run_path.parent.name],

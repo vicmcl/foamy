@@ -162,7 +162,7 @@ def main():
             df = df.set_index('Run ID').astype(str)
             st.table(df)
             st.download_button(
-                'Export .csv',
+                'Export CSV',
                 df.to_csv(),
                 f'{run_path.name}.csv',
                 'Download report'

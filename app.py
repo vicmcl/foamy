@@ -6,6 +6,58 @@ from utils.impute import impute_data
 import streamlit as st
 
 
+def iteration_slider(dataset, key):
+    st.markdown('### Filter last N iterations')
+    lim = st.select_slider(
+        'Filter last N iterations',
+        options=range(100, dataset.shape[0] + 1, 100),
+        key=key + '_slider',
+        label_visibility='hidden'
+    )
+    if type(lim) == int:
+        return dataset.iloc[- (lim + 1):, :]
+    return dataset
+
+
+def show_stats(dataset):
+    st.markdown('### Stats')
+    st.table(dataset.describe().loc[['mean', 'std', 'min', 'max']])
+
+
+def tab_content(
+    dataset, key, title='', logscale=False, columns=[], stats=True, slider=True
+):
+    if dataset is not None:
+        if columns:
+            dataset = dataset[columns]
+        sliced_dataset = dataset
+        # =====================================================================
+        if slider:
+            sliced_dataset = iteration_slider(dataset, key)
+            st.divider()
+        # =====================================================================
+        if stats:
+            show_stats(sliced_dataset)
+            st.divider()
+        # =====================================================================
+        st.markdown('### Plot')
+        col_selector, col_toggle = st.columns([2, 1], gap='large')
+
+        with col_toggle:
+            for _ in range(2): st.write("")
+            toggle = st.toggle("Select all fields", key=key + '_toggle')
+
+        with col_selector:
+            figure_in_tab(
+                sliced_dataset,
+                preselect_all=toggle,
+                logscale=logscale,
+                title=title,
+            )
+    else:
+        st.write("No data found in this run.")
+
+
 def main():
 
     st.title('OpenFoam Data Viewer')
@@ -26,12 +78,12 @@ def main():
 
         # Fetch the data
         residuals = impute_data(fetch_residuals(run_path))
-        probes = impute_data(
-            fetch_postprocessing_data(run_path, directory='probe')
-        )
-        forceCoeffs = impute_data(
-            fetch_postprocessing_data(run_path, directory='forceCoeffs')
-        )
+        forceCoeffs = impute_data(fetch_postprocessing_data(
+            run_path, directory='forceCoeffs'
+        ))
+        probes = impute_data(fetch_postprocessing_data(
+            run_path, directory='probe'
+        ))
 
         # Create the tabs
         tabs = ['Residuals', 'Force Coefficients', 'Probes']
@@ -39,99 +91,37 @@ def main():
 
         # Residuals tab
         with residuals_tab:
-            col_selector, col_toggle = st.columns([2, 1], gap='large')
-
-            with col_toggle:
-                for _ in range(2): st.write("")
-                toggle = st.toggle("Select all fields", key='residuals')
-
-            with col_selector:
-                figure_in_tab(
-                    residuals,
-                    logscale=True,
-                    preselect_all=toggle,
-                    title='Residuals'
-                )
+            tab_content(
+                residuals,
+                key='residuals',
+                title='Residuals',
+                logscale=True,
+                stats=False,
+                slider=False
+            )
 
         # Force coefficients tab
         with forceCoeffs_tab:
-            if forceCoeffs is not None:
-                dataset = forceCoeffs[['Cd', 'Cl', 'Cm', 'Cl(f)', 'Cl(r)']]
-
-                st.markdown('### Filter last N iterations')
-                lim = st.select_slider(
-                    'Filter last N iterations',
-                    options=range(100, dataset.shape[0] + 1, 100),
-                    key='forceCoeffs_slider',
-                    label_visibility='hidden'
-                )
-                if type(lim) == int:
-                    sliced_dataset = dataset.iloc[-lim-1:, :]
-                else:
-                    sliced_dataset = dataset
-
-                st.divider()
-                st.markdown('### Stats')
-                st.table(
-                    sliced_dataset.describe().loc[
-                        ['mean', 'std', 'min', 'max']
-                    ]
-                )
-                
-                st.divider()
-                st.markdown('### Plot')
-                col_selector, col_toggle = st.columns([2, 1], gap='large')
-
-                with col_toggle:
-                    for _ in range(2): st.write("")
-                    toggle = st.toggle("Select all fields", key='forceCeoffs')
-
-                with col_selector:
-                    figure_in_tab(
-                        sliced_dataset,
-                        preselect_all=toggle,
-                        title='Force Coefficients',
-                    )
-            else:
-                st.write("No force coefficient found in this run.")
+            tab_content(
+                forceCoeffs,
+                key='forceCoeffs',
+                title='Force Coefficients',
+                logscale=False,
+                columns=['Cd', 'Cl', 'Cm', 'Cl(f)', 'Cl(r)'],
+                stats=True,
+                slider=True
+            )
 
         # Probes tab
         with probes_tab:
-            if probes is not None:
-
-                st.markdown('### Filter last N iterations')
-                lim = st.select_slider(
-                    'Filter last N iterations',
-                    options=range(100, dataset.shape[0] + 1, 100),
-                    key='probes_slider',
-                    label_visibility='hidden'
-                )
-                if type(lim) == int:
-                    sliced_dataset = probes.iloc[-lim-1:, :]
-                else:
-                    sliced_dataset = probes
-
-                st.divider()
-                st.markdown('### Stats')
-                st.table(
-                    sliced_dataset.describe().loc[
-                        ['mean', 'std', 'min', 'max']
-                    ]
-                )
-                st.divider()
-                st.markdown('### Plot')
-                col_selector, col_toggle = st.columns([2, 1], gap='large')
-                
-                with col_toggle:
-                    for _ in range(2): st.write("")
-                    toggle = st.toggle("Select all fields", key='probes')
-                
-                with col_selector:
-                    figure_in_tab(
-                        sliced_dataset, preselect_all=toggle, title='Probes'
-                    )
-            else:
-                st.write("No probe found in this run.")
+            tab_content(
+                probes,
+                key='probes',
+                title='Probes',
+                logscale=False,
+                stats=True,
+                slider=True
+            )
 
 
 if __name__=='__main__':

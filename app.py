@@ -2,6 +2,7 @@ from pathlib import Path
 from utils.plot import figure_in_tab
 from utils.fetch import fetch_postprocessing_data, fetch_residuals
 from utils.impute import impute_data
+from utils.report import report
 
 import streamlit as st
 
@@ -21,41 +22,64 @@ def iteration_slider(dataset, key):
 
 def show_stats(dataset):
     st.markdown('### Stats')
-    st.table(dataset.describe().loc[['mean', 'std', 'min', 'max']])
+    stats_df = dataset.describe().loc[['mean', 'std', 'min', 'max']]
+    st.table(stats_df)
+    return stats_df
 
 
-def tab_content(
-    dataset, key, title='', logscale=False, columns=[], stats=True, slider=True
-):
-    if dataset is not None:
-        if columns:
-            dataset = dataset[columns]
-        sliced_dataset = dataset
-        # =====================================================================
-        if slider:
-            sliced_dataset = iteration_slider(dataset, key)
-            st.divider()
-        # =====================================================================
-        if stats:
-            show_stats(sliced_dataset)
-            st.divider()
-        # =====================================================================
-        st.markdown('### Plot')
-        col_selector, col_toggle = st.columns([2, 1], gap='large')
+class TabContent():
 
-        with col_toggle:
-            for _ in range(2): st.write("")
-            toggle = st.toggle("Select all fields", key=key + '_toggle')
+    def __init__(
+        self,
+        dataset,
+        key,
+        title='',
+        logscale=False,
+        columns=[],
+        stats=True,
+        slider=True
+    ):
+        self.dataset = dataset
+        self.key = key
+        self.title = title
+        self.logscale = logscale
+        self.columns = columns
+        self.stats = stats
+        self.slider = slider
+    
+    def __call__(self):
+        if self.dataset is not None:
+            if self.columns:
+                self.dataset = self.dataset[self.columns]
+            sliced_dataset = self.dataset
+            # =================================================================
+            if self.slider:
+                sliced_dataset = iteration_slider(self.dataset, self.key)
+                st.divider()
+            # =================================================================
+            if self.stats:
+                self.stats_table = show_stats(sliced_dataset)
+                st.divider()
+            # =================================================================
+            st.markdown('### Plot')
+            col_selector, col_toggle = st.columns([2, 1], gap='large')
 
-        with col_selector:
-            figure_in_tab(
-                sliced_dataset,
-                preselect_all=toggle,
-                logscale=logscale,
-                title=title,
-            )
-    else:
-        st.write("No data found in this run.")
+            with col_toggle:
+                for _ in range(2): st.write("")
+                toggle = st.toggle(
+                    "Select all fields", key=self.key + '_toggle'
+                )
+
+            with col_selector:
+                figure_in_tab(
+                    sliced_dataset,
+                    preselect_all=toggle,
+                    logscale=self.logscale,
+                    title=self.title,
+                )
+            
+        else:
+            st.write("No data found in this run.")
 
 
 def main():
@@ -86,23 +110,12 @@ def main():
         ))
 
         # Create the tabs
-        tabs = ['Residuals', 'Force Coefficients', 'Probes']
-        residuals_tab, forceCoeffs_tab, probes_tab = st.tabs(tabs)
-
-        # Residuals tab
-        with residuals_tab:
-            tab_content(
-                residuals,
-                key='residuals',
-                title='Residuals',
-                logscale=True,
-                stats=False,
-                slider=False
-            )
-
+        tabs = ['Residuals', 'Force Coefficients', 'Probes', 'Report']
+        residuals_tab, forceCoeffs_tab, probes_tab, report_tab = st.tabs(tabs)
+        
         # Force coefficients tab
         with forceCoeffs_tab:
-            tab_content(
+            forceCoeffs_content = TabContent(
                 forceCoeffs,
                 key='forceCoeffs',
                 title='Force Coefficients',
@@ -111,10 +124,23 @@ def main():
                 stats=True,
                 slider=True
             )
+            forceCoeffs_content()
+
+        # Residuals tab
+        with residuals_tab:
+            residuals_content = TabContent(
+                residuals,
+                key='residuals',
+                title='Residuals',
+                logscale=True,
+                stats=False,
+                slider=False
+            )
+            residuals_content()
 
         # Probes tab
         with probes_tab:
-            tab_content(
+            probes_content = TabContent(
                 probes,
                 key='probes',
                 title='Probes',
@@ -122,7 +148,25 @@ def main():
                 stats=True,
                 slider=True
             )
+            probes_content()
 
+        # Report tab
+        with report_tab:
+            df = report(run_path)
+            df['Cd'] = round(
+                forceCoeffs_content.stats_table.loc['mean', 'Cd'], 4
+            )
+            df['Cl'] = round(
+                forceCoeffs_content.stats_table.loc['mean', 'Cl'], 4
+            )
+            df = df.set_index('Run ID').astype(str)
+            st.table(df)
+            st.download_button(
+                'Export .csv',
+                df.to_csv(),
+                f'{run_path.name}.csv',
+                'Download report'
+            )
 
 if __name__=='__main__':
     main()

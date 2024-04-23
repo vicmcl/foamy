@@ -1,98 +1,151 @@
+import pandas as pd
 from pathlib import Path
-from warnings import warn
-from typing import List, Dict, Any
+from typing import Dict
+from sklearn.base import BaseEstimator, TransformerMixin
 
-import utils.find as find
-import utils.constants as cst
-import utils.pipeline as pl
+def parse_columns(file_path: Path) -> list:
+    """Parse the columns from a file
 
-
-def fetch_run_data(
-    run_path: str, specdir: str = None, probe: str = None, **kwargs
-) -> List:
+    Args:
+        file_path (Path): The path to the file
     
-    run_path = Path(run_path)
+    Returns:
+        list: A list containing the column names
+    """
+    with open(file_path, 'r') as f:
+
+        # Check if the file is a residuals file
+        if file_path.name.endswith('FinalRes_0'):
+            return ['Time', file_path.name.split('FinalRes')[0]]
+        
+        for line in f:
+            if line.startswith('# Probe'):
+                match file_path.name:
+                    case 'U':
+                        return  ['Time', 'Ux', 'Uy', 'Uz']
+                    case _:
+                        return ['Time', file_path.name]
+            if line.startswith('# Time'):
+                columns = line.strip().split()[2:]
+                break
+
+    return ['Time'] + columns
+
+
+def strip_parentheses(s: str):
+    """Strip parentheses from a string
+
+    Args:
+        s (str): The string to strip parentheses from
+
+    Returns:
+        float: The float value of the string with parentheses stripped
+    """
+    while s.startswith("("):
+        s = s[1:]
+    while s.endswith(")"):
+        s = s[:-1]
+    
+    return float(s)
+
+
+def fetch_postprocessing_dirs(run_path: Path) -> Dict:
+    """Fetch the postprocessing directories from the run directory
+
+    Args:
+        run_path (Path): The path to the run directory
+
+    Returns:
+        Dict: A dictionary containing the postprocessing directories and log files
+    """
     run_id = run_path.name
-    file_extension = '.dat'
-    pp_dirs = []
 
-    if probe != None and specdir != None:
-        raise ValueError('probe and specdir are mutually exclusive.')
+    postprocessing_dir = run_path / 'postProcessing'
+    postprocessing_outputs = [
+        output for output in postprocessing_dir.iterdir() if output.is_dir()
+    ]
 
-    # Generic data
-    if specdir != None:
-        pp_dirs = find.find_dirs(specdir, root_dir=run_path)
-        error_dir = specdir
+    log_dir = run_path / 'logs'
+    log_files = [log for log in log_dir.iterdir() if log.is_file()]
 
-    # Probes
-    elif probe != None:
-        pp_dirs = [run_path / 'postProcessing/probes']
-        file_extension = probe
-        error_dir = "probes"
+    return {
+        'run_id': run_id,
+        'postProcessing': postprocessing_outputs,
+        'logs': log_files
+    }
+
+
+def fetch_residuals(run_path: Path) -> pd.DataFrame:
+    """Fetch the residuals from the run directory
+
+    Args:
+        run_path (Path): The path to the run directory
+
+    Returns:
+        pd.DataFrame: A DataFrame containing the residuals data
+    """
+
+    # Fetch the residuals files
+    residuals_files = [
+        f for f in fetch_postprocessing_dirs(run_path)['logs'] 
+        if f.name.endswith('Res_0')
+    ]
+    # Concatenate the residuals data
+    residuals_df = pd.concat([
+        pd.read_csv(
+            f, sep=r'\s+', comment='#', names=parse_columns(f)
+        ).set_index('Time') for f in residuals_files
+    ], axis=1)
+
+    return residuals_df
+
+
+def fetch_postprocessing_data(run_path: Path, directory: str) -> pd.DataFrame | None:
+    """Fetch the postprocessing data from the run directory
+
+    Args:
+        run_path (Path): The path to the run directory
+        directory (str): The directory to fetch the data from
     
-    # Residuals
-    else:
-        pp_dirs = [run_path / 'postProcessing/residuals']
-        error_dir = "residuals"
-
-    # Loop over the postpro dirs
-    for pp in pp_dirs:
-
-        # ! If wrong path
-        if not pp.is_dir():
-            warn(f'No {cst.bred}{error_dir}{cst.reset} directory found.', UserWarning)
-
-        # Get the list of file in a given run and the unique basename(s)
-        file_paths = sorted(find.find_files(file_extension, root_dir=pp))
-        basenames = {f.name for f in file_paths}
-
-        # ! More than one basename found
-        if len(basenames) > 1:
-            raise ValueError(f"More than one data type selected: {', '.join(bn for bn in basenames)}")
-        
-        # Yield a DataFrame and the run and postpro dir info
-        df = pl.files_to_df(file_paths, **kwargs)
-        if not df.empty:
-            if file_extension == '.dat':
-                yield {'run_id': run_id, 'pp_dir': pp.name , 'df': df}
-            else:
-                yield {'run_id': run_id, 'pp_dir': file_paths[0].name , 'df': df}
-        else:
-            continue
-
-# * ===================================================================================================
-
-def fetch_unit(
-    *,
-    df,
-    csv_df,
-    pp_dir,
-    probe,
-    **kwargs
-) -> str:
+    Returns:
+        pd.DataFrame: A DataFrame containing the postprocessing data
     
-    if probe != None:
-        if 'unit' in kwargs: unit = kwargs.get("unit")
-        elif probe == "p" or probe =="^p" or probe == "p$": unit = 'Pa'
-        elif probe == "k" or probe =="^k" or probe == "k$": unit = 'J/kg'
-        else: unit = None
+    Raises:
+        IndexError: If the directory is not found in the postProcessing directory
+    """
+
+    postProcessing = fetch_postprocessing_dirs(run_path)['postProcessing']
+    try:
+        selected_dir = [d for d in postProcessing if directory in d.name][0]
+    except IndexError:
+        return None
+
+    # Loop through the postProcessing directories
+    df = pd.DataFrame()
+
+    # Loop through the timesteps in the directory
+    for timestep in selected_dir.iterdir():
+        all_files_data = pd.DataFrame()
+
+        # Loop through the files in the timestep directory
+        for f in timestep.iterdir():
+            if f.is_file():
+                file_path = selected_dir / timestep / f
+                columns = parse_columns(file_path)
+
+                # Read the data from the file
+                new_data = pd.read_csv(
+                    file_path, sep=r'\s+', comment='#', names=columns
+                ).set_index('Time')
+
+                # Strip parentheses from columns data
+                for col in new_data.select_dtypes(include=['object']).columns:
+                    new_data[col] = new_data[col].apply(strip_parentheses)
+                
+                # Concatenate the new file to the existing data
+                all_files_data = pd.concat([all_files_data, new_data], axis=1)
+
+        # Concatenate the data from the new timestep to the existing data
+        df = pd.concat([df, all_files_data], axis=0)
     
-    elif pp_dir == 'residuals':
-        unit = 'Residuals'
-        
-    else:
-        # List of all the units for the pp dir in the csv
-        unit_list = find.get_labels(csv_df, pp_dir, "unit")
-        unit_length = len(unit_list)
-
-        # List of all the headers for the pp dir in the csv 
-        header_list = find.get_labels(csv_df, pp_dir, "postpro")
-
-        # If at least one unit label
-        if unit_length > 1:
-            # The chosen unit for the graph is the first one in the list (skip the Time column)
-            unit = [unit_list[i] for i in range(unit_length) if header_list[i] in df.columns][1]
-        else:
-            unit = ""
-
-    return unit
+    return df

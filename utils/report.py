@@ -30,16 +30,21 @@ get_n_cpu = partial(get_line, start_line='nProcs')
 
 
 
-def report(run_path: Path):
+def get_report(run_path: Path):
     df = pd.DataFrame(
         {       
             'Project': [run_path.parent.name],
             'Run ID': [run_path.name],
             'Iterations': [get_iterations(run_path)],
             'Date': [get_date(run_path)],
-            'Duration': [get_duration(run_path)],
+            'Duration': [float(get_duration(run_path))],
             'Solver': [get_solver(run_path).split()[0]],
-            'CPU': [get_n_cpu(run_path)]
+            'CPU': [int(get_n_cpu(run_path))],
+            'CPU Efficiency': [
+                float(get_iterations(run_path)) /
+                float(get_duration(run_path)) /
+                float(get_n_cpu(run_path))
+            ],
         }
-    )
+    ).set_index('Run ID')
     return df

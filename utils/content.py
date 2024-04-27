@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 from utils.plot import figure_in_tab
-from typing import Any
+from typing import Any, List
 
 
 def iteration_slider(dataset: pd.DataFrame, key: str) -> pd.DataFrame:
@@ -23,6 +23,14 @@ def show_stats(dataset: pd.DataFrame) -> Any:
     st.table(stats_df)
     return stats_df
 
+
+def filter_columns(tab) -> List:
+    if 'forceCoeffs' in tab:
+        return ['Cd', 'Cl', 'Cm', 'Cl(f)', 'Cl(r)']
+    else:
+        return []
+    
+                
 class TabContent():
     
     def __init__(
@@ -45,34 +53,36 @@ class TabContent():
     
     def __call__(self):
         if self.dataset is not None:
+
             if self.columns:
                 self.dataset = self.dataset[self.columns]
             sliced_dataset = self.dataset
-            # =================================================================
+            
             if self.slider:
                 sliced_dataset = iteration_slider(self.dataset, self.key)
                 st.divider()
-            # =================================================================
+            
             if self.stats:
                 self.stats_table = show_stats(sliced_dataset)
                 st.divider()
-            # =================================================================
-            st.markdown('### Plot')
-            col_selector, col_toggle = st.columns([2, 1], gap='large')
-
-            with col_toggle:
-                for _ in range(2): st.write("")
-                toggle = st.toggle(
-                    "Select all fields", key=self.key + '_toggle'
-                )
-
-            with col_selector:
-                figure_in_tab(
-                    sliced_dataset,
-                    preselect_all=toggle,
-                    logscale=self.logscale,
-                    title=self.title,
-                )
             
+            st.markdown('### Plot')
+
+            selected_columns = st.multiselect(
+                'Select the fields to plot',
+                sliced_dataset.columns,
+                key=self.key + '_selector',
+                placeholder='Default: All Fields Selected',
+            )
+
+            if not selected_columns:
+                selected_columns = sliced_dataset.columns.tolist()
+
+            figure_in_tab(
+                sliced_dataset,
+                columns=selected_columns,
+                logscale=self.logscale,
+                title=self.title,
+            )
         else:
             st.write("No data found in this run.")

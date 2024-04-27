@@ -1,7 +1,6 @@
 import pandas as pd
 from pathlib import Path
 from typing import Dict
-from sklearn.base import BaseEstimator, TransformerMixin
 
 def parse_columns(file_path: Path) -> list:
     """Parse the columns from a file
@@ -100,7 +99,9 @@ def fetch_residuals(run_path: Path) -> pd.DataFrame:
     return residuals_df
 
 
-def fetch_postprocessing_data(run_path: Path, directory: str) -> pd.DataFrame | None:
+def fetch_postprocessing_data(
+        run_path: Path, directory: str | None = None
+) -> pd.DataFrame | None:
     """Fetch the postprocessing data from the run directory
 
     Args:
@@ -115,10 +116,13 @@ def fetch_postprocessing_data(run_path: Path, directory: str) -> pd.DataFrame | 
     """
 
     postProcessing = fetch_postprocessing_dirs(run_path)['postProcessing']
-    try:
-        selected_dir = [d for d in postProcessing if directory in d.name][0]
-    except IndexError:
-        return None
+    if directory is not None:
+        try:
+            selected_dir = [d for d in postProcessing if directory in d.name][0]
+        except IndexError:
+            return None
+    else:
+        selected_dir = postProcessing
 
     # Loop through the postProcessing directories
     df = pd.DataFrame()

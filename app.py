@@ -1,11 +1,17 @@
-from pathlib import Path
-from utils.fetch import fetch_postprocessing_data, fetch_residuals
-from utils.impute import impute_data
-from utils.report import report
-from utils.content import TabContent
-
 import streamlit as st
+import pandas as pd
 
+from pathlib import Path
+from utils.content import TabContent, filter_columns
+from utils.impute import impute_data
+from utils.report import get_report
+from utils.fetch import (
+    fetch_postprocessing_dirs,
+    fetch_postprocessing_data,
+    fetch_residuals
+)
+
+SKIP_DIRS = ['cuttingPlane', 'sets']
 
 def main():
 
@@ -24,74 +30,52 @@ def main():
     if selected_run is not None:
 
         run_path = selected_run.resolve()
-
-        # Fetch the data
         residuals = impute_data(fetch_residuals(run_path))
-        forceCoeffs = impute_data(fetch_postprocessing_data(
-            run_path, directory='forceCoeffs'
-        ))
-        probes = impute_data(fetch_postprocessing_data(
-            run_path, directory='probe'
-        ))
+        report = get_report(run_path)
 
-        # Create the tabs
-        tabs = ['Residuals', 'Force Coefficients', 'Probes', 'Report']
-        residuals_tab, forceCoeffs_tab, probes_tab, report_tab = st.tabs(tabs)
-        
-        # Force coefficients tab
-        with forceCoeffs_tab:
-            forceCoeffs_content = TabContent(
-                forceCoeffs,
-                key='forceCoeffs',
-                title='Force Coefficients',
-                logscale=False,
-                columns=['Cd', 'Cl', 'Cm', 'Cl(f)', 'Cl(r)'],
-                stats=True,
-                slider=True
-            )
-            forceCoeffs_content()
+        pdirs = fetch_postprocessing_dirs(run_path)['postProcessing']
+        tabs_id = [pdir.name for pdir in pdirs if pdir.name not in SKIP_DIRS]
+        tabs_id += ['Residuals', 'Report']
+        tabs = st.tabs(tabs_id)
 
-        # Residuals tab
-        with residuals_tab:
-            residuals_content = TabContent(
-                residuals,
-                key='residuals',
-                title='Residuals',
-                logscale=True,
-                stats=False,
-                slider=False
-            )
-            residuals_content()
+        for tab in tabs_id:
+            with tabs[tabs_id.index(tab)]:
 
-        # Probes tab
-        with probes_tab:
-            probes_content = TabContent(
-                probes,
-                key='probes',
-                title='Probes',
-                logscale=False,
-                stats=True,
-                slider=True
-            )
-            probes_content()
+                if tab == 'Residuals':
+                    residuals_content = TabContent(
+                        residuals,
+                        key='residuals',
+                        title='Residuals',
+                        logscale=True,
+                        stats=False,
+                        slider=False
+                    )
+                    residuals_content()
 
-        # Report tab
-        with report_tab:
-            df = report(run_path)
-            df['Cd'] = round(
-                forceCoeffs_content.stats_table.loc['mean', 'Cd'], 4
-            )
-            df['Cl'] = round(
-                forceCoeffs_content.stats_table.loc['mean', 'Cl'], 4
-            )
-            df = df.set_index('Run ID').astype(str)
-            st.table(df)
-            st.download_button(
-                'Export CSV',
-                df.to_csv(),
-                f'{run_path.name}.csv',
-                'Download report'
-            )
+                elif tab == 'Report':
+                    st.dataframe(report)
+
+                else:
+                    data = impute_data(
+                        fetch_postprocessing_data(run_path, directory=tab)
+                    )
+                    content = TabContent(
+                        data,
+                        key=tab,
+                        title=tab,
+                        logscale=False,
+                        columns=filter_columns(tab),
+                        stats=True,
+                        slider=True
+                    )
+                    content()
+                    content_report = pd.DataFrame(
+                        content.stats_table.loc['mean']
+                    ).T.set_index(report.index)
+                    content_report.columns = [
+                        tab + '_' + col for col in content_report.columns
+                    ]
+                    report = pd.concat([report, content_report], axis=1)
 
 if __name__=='__main__':
     main()

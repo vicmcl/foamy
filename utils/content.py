@@ -12,7 +12,7 @@ def iteration_slider(dataset: pd.DataFrame, key: str) -> pd.DataFrame:
         key=key + '_slider',
         label_visibility='hidden'
     )
-    if type(lim) == int:
+    if isinstance(lim, int):
         return dataset.iloc[- (lim + 1):, :]
     return dataset
 
@@ -27,33 +27,31 @@ def show_stats(dataset: pd.DataFrame) -> Any:
 def filter_columns(tab) -> List:
     if 'forceCoeffs' in tab:
         return ['Cd', 'Cl', 'Cm', 'Cl(f)', 'Cl(r)']
-    else:
-        return []
+    return []
     
                 
 class TabContent():
     
     def __init__(
         self,
-        dataset,
-        key,
-        title='',
-        logscale=False,
-        columns=[],
-        stats=True,
-        slider=True
+        dataset: pd.DataFrame,
+        key: str,
+        title: str = "",
+        logscale: bool = False,
+        columns: List[str] = None,
+        stats: bool = True,
+        slider: bool = True
     ):
         self.dataset = dataset
         self.key = key
         self.title = title
         self.logscale = logscale
-        self.columns = columns
+        self.columns = columns if columns else []
         self.stats = stats
         self.slider = slider
     
     def __call__(self):
         if self.dataset is not None:
-
             if self.columns:
                 self.dataset = self.dataset[self.columns]
             sliced_dataset = self.dataset
